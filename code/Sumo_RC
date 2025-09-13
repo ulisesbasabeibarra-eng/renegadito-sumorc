@@ -1,1 +1,92 @@
+#include <Bluepad32.h>
 
+// === Definición de pines de los motores ===
+// Motor izquierdo
+#define IN1A 16
+#define IN1B 4
+// Motor derecho
+#define IN2A 23    
+#define IN2B 22
+
+// Puntero al control PS4
+ControllerPtr myController;
+
+// === Función para mover un motor ===
+// Recibe los pines de dirección (inA, inB) y la velocidad deseada (-255 a 255).
+// Si el valor es positivo → gira en un sentido
+// Si es negativo → gira en el sentido contrario
+// Si es 0 → motor detenido
+void setMotor(int inA, int inB, int speed) {
+  speed = constrain(speed, -255, 255); // Limita el rango de velocidad
+
+  if (speed > 0) {
+    analogWrite(inA, speed);   // PWM en un pin
+    analogWrite(inB, 0);       // El otro pin apagado
+  } else if (speed < 0) {
+    analogWrite(inA, 0);
+    analogWrite(inB, -speed);  // Sentido contrario
+  } else {
+    // Motor apagado
+    analogWrite(inA, 0);
+    analogWrite(inB, 0);
+  }
+}
+
+// === Evento: cuando se conecta un mando ===
+void onConnectedController(ControllerPtr ctl) {
+  myController = ctl;  // Guardamos la referencia del control conectado
+  Serial.println("Control PS4 conectado!");
+}
+
+// === Evento: cuando se desconecta un mando ===
+void onDisconnectedController(ControllerPtr ctl) {
+  myController = nullptr;  // Limpiamos la referencia
+  Serial.println("Control PS4 desconectado!");
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configurar los pines de los motores como salida
+  pinMode(IN1A, OUTPUT);
+  pinMode(IN1B, OUTPUT);
+  pinMode(IN2A, OUTPUT);
+  pinMode(IN2B, OUTPUT);
+
+  // Iniciar Bluepad32 (manejo de joysticks)
+  BP32.setup(&onConnectedController, &onDisconnectedController);
+
+  // Borra claves Bluetooth guardadas (para evitar problemas de emparejamiento)
+  BP32.forgetBluetoothKeys();
+}
+
+void loop() {
+  // Actualiza el estado del mando (lee botones, sticks, etc.)
+  BP32.update();
+
+  // Solo actuamos si hay un control conectado
+  if (myController && myController->isConnected()) {
+    // === Leer valores de los sticks ===
+    int ly = myController->axisY();   // Stick izquierdo vertical → motor izquierdo
+    int ry = myController->axisRY();  // Stick derecho vertical → motor derecho
+
+    // === Velocidad máxima fija ===
+    const int maxSpeed = 250;
+
+    // === Escalamos los valores de los sticks al rango -maxSpeed..maxSpeed ===
+    // Nota: en Bluepad32 los sticks devuelven -511 (arriba/izquierda) a +512 (abajo/derecha)
+    // Por eso usamos map() para pasarlos al rango de velocidad
+    int motorLeft  = map(ly, -511, 512, maxSpeed, -maxSpeed);   
+    int motorRight = map(ry, -511, 512, maxSpeed, -maxSpeed);
+
+    // === Mover motores con los valores calculados ===
+    setMotor(IN1A, IN1B, motorLeft);
+    setMotor(IN2A, IN2B, motorRight);
+
+    // === Debug por Serial (opcional) ===
+    Serial.print("LY: "); Serial.print(ly);
+    Serial.print("  RY: "); Serial.print(ry);
+    Serial.print("  ML: "); Serial.print(motorLeft);
+    Serial.print("  MR: "); Serial.println(motorRight);
+  }
+}
